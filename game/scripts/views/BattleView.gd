@@ -18,11 +18,12 @@ extends Control
 
 const W = UITheme.W
 const STAGE_H  := 54
-const ENEMY_H  := 270
+const CHEST_H  := 60
+const ENEMY_H  := 240
 const DIV_H    := 36
-const SQUAD_H  := 300
-const SYN_H    := 110
-const LOG_H    := UITheme.CONT_H - STAGE_H - ENEMY_H - DIV_H - SQUAD_H - SYN_H  # ~152
+const SQUAD_H  := 280
+const SYN_H    := 90
+const LOG_H    := UITheme.CONT_H - STAGE_H - CHEST_H - ENEMY_H - DIV_H - SQUAD_H - SYN_H
 
 var enemy_cards:  Dictionary = {}   # id → Control
 var speed_btns:   Array = []
@@ -47,7 +48,11 @@ func _build():
 	_add_stage_bar(y)
 	y += STAGE_H
 
-	# ── 2. 적 구역 배경 ───────────────────────────────────
+	# ── 2. 방치 상자 ──────────────────────────────────────
+	_add_idle_chest(y)
+	y += CHEST_H
+
+	# ── 3. 적 구역 배경 ───────────────────────────────────
 	var enemy_bg = UITheme.crect(Color(0.12, 0.05, 0.08), Vector2(W, ENEMY_H))
 	enemy_bg.position.y = y
 	add_child(enemy_bg)
@@ -74,6 +79,68 @@ func _build():
 
 	# ── 6. 전투 로그 ──────────────────────────────────────
 	_add_battle_log(y)
+
+# ─── 방치 상자 ───────────────────────────────────────────────
+var _chest_bar_fill: Control
+var _chest_lbl: Label
+
+func _add_idle_chest(y: int):
+	var bg = UITheme.crect(Color(0.12, 0.08, 0.05), Vector2(W, CHEST_H))
+	bg.position.y = y
+	add_child(bg)
+
+	var icon = UITheme.lbl("📦", UITheme.FS_LG, UITheme.GOLD)
+	icon.position = Vector2(10, y + 8)
+	add_child(icon)
+
+	var bar_bg = UITheme.crect(UITheme.BG_CARD, Vector2(W - 150, 12))
+	bar_bg.position = Vector2(56, y + 10)
+	add_child(bar_bg)
+
+	_chest_bar_fill = UITheme.crect(UITheme.GOLD, Vector2(0, 12))
+	_chest_bar_fill.position = Vector2(56, y + 10)
+	add_child(_chest_bar_fill)
+
+	_chest_lbl = UITheme.lbl("방치 상자 로딩...", UITheme.FS_XS, UITheme.GOLD)
+	_chest_lbl.position = Vector2(56, y + 26)
+	add_child(_chest_lbl)
+
+	var collect_btn = UITheme.btn("수령", UITheme.FS_SM, UITheme.GOLD)
+	collect_btn.position = Vector2(W - 88, y + 10)
+	collect_btn.custom_minimum_size = Vector2(80, 40)
+	collect_btn.pressed.connect(_collect_chest)
+	add_child(collect_btn)
+
+	_refresh_chest_ui()
+
+func _refresh_chest_ui():
+	var data = GameData.get_idle_chest_data()
+	var bar_w = W - 150
+	if _chest_bar_fill:
+		_chest_bar_fill.size.x = bar_w * data["pct"]
+		_chest_bar_fill.color = UITheme.GOLD if data["pct"] < 1.0 else UITheme.GREEN
+	if _chest_lbl:
+		var h = int(data["elapsed"] / 3600)
+		var m = int(int(data["elapsed"]) % 3600 / 60)
+		_chest_lbl.text = "🪙 %d  재료 × %d  (%02d시간 %02d분 적립 / 최대 4시간)" % [
+			data["gold"], data["mats"], h, m]
+
+func _collect_chest():
+	var data = GameData.collect_idle_chest()
+	_refresh_chest_ui()
+	var msg = "📦 상자 수령! 🪙 %d  재료 × %d" % [data["gold"], data["mats"]]
+	var lbl = UITheme.lbl(msg, UITheme.FS_MD, UITheme.GOLD)
+	lbl.position = Vector2(UITheme.W / 2 - 180, 200)
+	add_child(lbl)
+	var tw = create_tween()
+	tw.tween_property(lbl, "position:y", lbl.position.y - 60, 1.8)
+	tw.parallel().tween_property(lbl, "modulate:a", 0.0, 1.8)
+	tw.tween_callback(lbl.queue_free)
+
+func refresh():
+	_refresh_chest_ui()
+	_refresh_squad_grid()
+	refresh_synergy()
 
 # ─── 스테이지 바 ─────────────────────────────────────────────
 func _add_stage_bar(y: int):

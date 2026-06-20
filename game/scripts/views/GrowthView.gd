@@ -1,282 +1,474 @@
 extends Control
 # ============================================================
-# GrowthView.gd — 성장 탭 (레벨업, 승급, 코어)
+# GrowthView.gd — 성장 탭
+# 서브탭: 성장(레벨/승급/코어) / 장비 / 유물
 # ============================================================
 
-var _selected_agent = null
-var _detail_panel: Control
-var _agent_list_vb: VBoxContainer
-var _lv_lbl: Label
-var _atk_lbl: Label
-var _hp_lbl: Label
-var _cost_lbl: Label
-var _star_info_lbl: Label
-var _core_lbl: Label
-
 const MAX_LEVEL := 60
+const SLOTS = ["weapon","armor","helmet","boots","ring","artifact"]
+const SLOT_NAMES = {"weapon":"무기","armor":"갑옷","helmet":"투구","boots":"장화","ring":"반지","artifact":"유물"}
+
+var _sub := 0
+var _content: Control
+var _sub_btns: Array = []
+var _selected_agent = null
 
 # ─────────────────────────────────────────────────────────────
 func _ready():
+	custom_minimum_size = Vector2(UITheme.W, UITheme.CONT_H)
 	_build()
 
 func _build():
-	custom_minimum_size = Vector2(UITheme.W, UITheme.CONT_H)
+	var root := UITheme.vbox(0)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(root)
 
-	# 좌: 유닛 리스트 (w=220), 우: 상세 패널 (w=500)
-	var hb := UITheme.hbox(0)
+	root.add_child(_make_sub_tab_bar())  # h=56
+
+	_content = Control.new()
+	_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_content.custom_minimum_size = Vector2(UITheme.W, UITheme.CONT_H - 56)
+	root.add_child(_content)
+
+	_switch_sub(0)
+
+# ─────────────────────────────────────────────────────────────
+# 서브 탭 바
+# ─────────────────────────────────────────────────────────────
+func _make_sub_tab_bar() -> Control:
+	var bg := UITheme.crect(UITheme.BG_DARK, Vector2(UITheme.W, 56))
+	var hb  := UITheme.hbox(0)
 	hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(hb)
-
-	hb.add_child(_make_unit_list())
-	hb.add_child(_make_detail_panel())
-
-func _make_unit_list() -> Control:
-	var bg := UITheme.crect(UITheme.BG_DARK, Vector2(220, UITheme.CONT_H))
-
-	var header := UITheme.lbl("보유 유닛", UITheme.FS_MD, UITheme.GOLD)
-	header.position = Vector2(10, 10)
-	bg.add_child(header)
-
-	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(0, 44)
-	scroll.custom_minimum_size = Vector2(220, UITheme.CONT_H - 44)
-	bg.add_child(scroll)
-
-	_agent_list_vb = UITheme.vbox(4)
-	_agent_list_vb.custom_minimum_size = Vector2(210, 0)
-	scroll.add_child(_agent_list_vb)
-
-	_populate_list()
+	bg.add_child(hb)
+	for i in ["📈 성장","⚔ 장비","💎 유물"]:
+		var b := Button.new(); b.text = i
+		b.add_theme_font_size_override("font_size", UITheme.FS_SM)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size   = Vector2(0, 56)
+		var idx := _sub_btns.size()
+		b.pressed.connect(func(): _switch_sub(idx))
+		_sub_btns.append(b); hb.add_child(b)
 	return bg
 
-func _populate_list():
-	for ch in _agent_list_vb.get_children():
-		ch.queue_free()
+func _switch_sub(idx: int):
+	_sub = idx
+	for i in _sub_btns.size():
+		_sub_btns[i].add_theme_color_override("font_color", UITheme.GOLD if i == idx else UITheme.GREY)
+	for c in _content.get_children(): c.queue_free()
+	match idx:
+		0: _content.add_child(_make_growth_tab())
+		1: _content.add_child(_make_equipment_tab())
+		2: _content.add_child(_make_relic_tab())
 
-	var owned := GameData.get_owned()
-	for agent in owned:
-		var row := _make_list_item(agent)
-		_agent_list_vb.add_child(row)
+func refresh():
+	_switch_sub(_sub)
 
-func _make_list_item(agent) -> Control:
-	var bg := UITheme.crect(UITheme.BG_CARD, Vector2(210, 60))
-	bg.mouse_filter = Control.MOUSE_FILTER_STOP
+# ═════════════════════════════════════════════════════════════
+# 서브탭 0: 성장
+# ═════════════════════════════════════════════════════════════
+func _make_growth_tab() -> Control:
+	var hb := UITheme.hbox(0)
+	hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hb.add_child(_make_unit_list())
+	hb.add_child(_make_growth_detail())
+	return hb
 
+func _make_unit_list() -> Control:
+	var bg := UITheme.crect(UITheme.BG_DARK, Vector2(210, UITheme.CONT_H - 56))
+
+	var title := UITheme.lbl("보유 유닛", UITheme.FS_SM, UITheme.GOLD)
+	title.position = Vector2(10, 8)
+	bg.add_child(title)
+
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(0, 36)
+	scroll.custom_minimum_size = Vector2(210, UITheme.CONT_H - 92)
+	bg.add_child(scroll)
+
+	var vb := UITheme.vbox(4)
+	vb.custom_minimum_size = Vector2(200, 0)
+	scroll.add_child(vb)
+	vb.name = "UnitListVB"
+
+	for agent in GameData.get_owned():
+		vb.add_child(_make_unit_list_row(agent))
+	return bg
+
+func _make_unit_list_row(agent) -> Control:
+	var bg := UITheme.crect(UITheme.BG_CARD, Vector2(200, 62))
 	var icon := UITheme.crect(agent.color, Vector2(44, 44))
-	icon.position = Vector2(8, 8)
+	icon.position = Vector2(6, 9)
 	bg.add_child(icon)
-
-	var name_lbl := UITheme.lbl(agent.name_kr, UITheme.FS_SM, UITheme.rarity_color(agent.rarity))
-	name_lbl.position = Vector2(60, 8)
-	bg.add_child(name_lbl)
-
-	var lv_lbl := UITheme.lbl("Lv.%d" % agent.level, UITheme.FS_XS, UITheme.GREY)
-	lv_lbl.position = Vector2(60, 30)
-	bg.add_child(lv_lbl)
-
+	bg.add_child(_lbl_at(agent.name_kr, UITheme.FS_SM, UITheme.rarity_color(agent.rarity), Vector2(58, 10)))
+	bg.add_child(_lbl_at("Lv.%d  %s" % [agent.level, "★"*agent.rarity], UITheme.FS_XS, UITheme.GREY, Vector2(58, 32)))
 	var btn := Button.new()
 	btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	btn.modulate.a = 0.0
-	btn.pressed.connect(func(): _select(agent))
+	btn.pressed.connect(func(): _select_agent(agent))
 	bg.add_child(btn)
-
 	return bg
 
-# ── 상세 패널 ─────────────────────────────────────────────────
-func _make_detail_panel() -> Control:
-	_detail_panel = UITheme.crect(UITheme.BG_PANEL, Vector2(500, UITheme.CONT_H))
+var _growth_detail_root: Control
+var _lv_lbl: Label; var _atk_lbl: Label; var _hp_lbl: Label
 
-	var vb := UITheme.vbox(0)
-	vb.position = Vector2(10, 10)
-	_detail_panel.add_child(vb)
+func _make_growth_detail() -> Control:
+	_growth_detail_root = UITheme.crect(UITheme.BG_PANEL, Vector2(510, UITheme.CONT_H - 56))
 
-	# 빈 상태
 	var hint := UITheme.lbl("← 유닛을 선택하세요", UITheme.FS_MD, UITheme.GREY)
-	hint.position = Vector2(60, UITheme.CONT_H / 2)
-	_detail_panel.add_child(hint)
+	hint.name = "Hint"
+	hint.position = Vector2(60, (UITheme.CONT_H - 56) / 2)
+	_growth_detail_root.add_child(hint)
+	return _growth_detail_root
 
-	return _detail_panel
-
-func _select(agent):
+func _select_agent(agent):
 	_selected_agent = agent
-	_refresh_detail()
+	_refresh_growth_detail()
 
-func _refresh_detail():
-	for ch in _detail_panel.get_children():
-		ch.queue_free()
-
-	if _selected_agent == null:
-		return
-
+func _refresh_growth_detail():
+	if not _growth_detail_root: return
+	for c in _growth_detail_root.get_children(): c.queue_free()
 	var a = _selected_agent
+	if not a: return
+
 	var copies: int = GameData.unit_copies.get(a.id, 0)
-
-	var vb := UITheme.vbox(12)
+	var vb := UITheme.vbox(10)
 	vb.position = Vector2(12, 12)
-	vb.custom_minimum_size = Vector2(476, 0)
-	_detail_panel.add_child(vb)
+	vb.custom_minimum_size = Vector2(486, 0)
+	_growth_detail_root.add_child(vb)
 
-	# ── 헤더 ──────────────────────────────────────────────
+	# 헤더
 	var hdr := UITheme.hbox(12)
-	var icon := UITheme.crect(a.color, Vector2(72, 72))
-	hdr.add_child(icon)
-	var info_vb := UITheme.vbox(4)
-	info_vb.add_child(UITheme.lbl(a.name_kr, UITheme.FS_LG, UITheme.rarity_color(a.rarity)))
-	info_vb.add_child(UITheme.lbl(UITheme.rarity_label(a.rarity), UITheme.FS_SM, UITheme.GREY))
-	info_vb.add_child(UITheme.lbl("%s · %s" % [a.group, a.job], UITheme.FS_SM, UITheme.CYAN))
-	hdr.add_child(info_vb)
+	hdr.add_child(UITheme.crect(a.color, Vector2(70, 70)))
+	var iv := UITheme.vbox(4)
+	iv.add_child(UITheme.lbl(a.name_kr, UITheme.FS_LG, UITheme.rarity_color(a.rarity)))
+	iv.add_child(UITheme.lbl(UITheme.rarity_label(a.rarity), UITheme.FS_SM, UITheme.GREY))
+	iv.add_child(UITheme.lbl("%s · %s" % [a.group, a.job], UITheme.FS_SM, UITheme.CYAN))
+	hdr.add_child(iv)
 	vb.add_child(hdr)
 	vb.add_child(UITheme.hsep())
 
-	# ── 스탯 ──────────────────────────────────────────────
-	var stat_hb := UITheme.hbox(24)
-	_lv_lbl = UITheme.lbl("Lv. %d / %d" % [a.level, MAX_LEVEL], UITheme.FS_MD, UITheme.WHITE)
+	# 스탯 행
+	var sh := UITheme.hbox(20)
+	_lv_lbl  = UITheme.lbl("Lv. %d / %d" % [a.level, MAX_LEVEL], UITheme.FS_MD, UITheme.WHITE)
 	_atk_lbl = UITheme.lbl("⚔ %d" % int(a.get_atk()), UITheme.FS_MD, UITheme.ORANGE)
 	_hp_lbl  = UITheme.lbl("❤ %d" % int(a.get_hp()),  UITheme.FS_MD, UITheme.HP_GREEN)
-	stat_hb.add_child(_lv_lbl)
-	stat_hb.add_child(_atk_lbl)
-	stat_hb.add_child(_hp_lbl)
-	vb.add_child(stat_hb)
-
-	# 스킬
+	sh.add_child(_lv_lbl); sh.add_child(_atk_lbl); sh.add_child(_hp_lbl)
+	vb.add_child(sh)
 	vb.add_child(UITheme.lbl("스킬: " + a.skill, UITheme.FS_SM, UITheme.PURPLE))
 	vb.add_child(UITheme.hsep())
 
-	# ── 레벨업 섹션 ───────────────────────────────────────
+	# 레벨업
 	vb.add_child(UITheme.lbl("■ 레벨업", UITheme.FS_MD, UITheme.GOLD))
-
-	var lv_cost := _level_cost(a.level)
-	_cost_lbl = UITheme.lbl("비용: 🪙 %d" % lv_cost, UITheme.FS_SM, UITheme.GREY)
-	vb.add_child(_cost_lbl)
-
-	var lv_hb := UITheme.hbox(8)
-	var btn1 := UITheme.btn("+1 레벨", UITheme.FS_MD, UITheme.WHITE)
-	btn1.custom_minimum_size = Vector2(140, 52)
-	btn1.pressed.connect(func(): _level_up(1))
-	lv_hb.add_child(btn1)
-	var btn10 := UITheme.btn("+10 레벨", UITheme.FS_MD, UITheme.WHITE)
-	btn10.custom_minimum_size = Vector2(140, 52)
-	btn10.pressed.connect(func(): _level_up(10))
-	lv_hb.add_child(btn10)
-	var btn_max := UITheme.btn("MAX", UITheme.FS_MD, UITheme.GOLD)
-	btn_max.custom_minimum_size = Vector2(100, 52)
-	btn_max.pressed.connect(func(): _level_up(MAX_LEVEL - a.level))
-	lv_hb.add_child(btn_max)
-	vb.add_child(lv_hb)
-
+	var lv_cost = 100 + a.level * 50 * a.rarity
+	vb.add_child(UITheme.lbl("+1 비용: 🪙 %d   보유: 🪙 %d" % [lv_cost, int(GameData.gold)], UITheme.FS_SM, UITheme.GREY))
+	var lhb := UITheme.hbox(8)
+	for cnt in [1, 10, MAX_LEVEL - a.level]:
+		var label = "+%d" % cnt if cnt < MAX_LEVEL else "MAX"
+		var b := UITheme.btn(label, UITheme.FS_SM, UITheme.WHITE)
+		b.custom_minimum_size = Vector2(110, 50)
+		b.pressed.connect(func(): _do_level(a, cnt))
+		lhb.add_child(b)
+	vb.add_child(lhb)
 	vb.add_child(UITheme.hsep())
 
-	# ── 승급 섹션 ─────────────────────────────────────────
-	vb.add_child(UITheme.lbl("■ 승급 (복사본 필요)", UITheme.FS_MD, UITheme.PURPLE))
-	var star_needed := _star_up_copies(a.rarity)
-	_star_info_lbl = UITheme.lbl(
-		"현재: %d성 · 복사본 %d개 보유 · 승급 필요: %d개" % [a.rarity, copies, star_needed],
-		UITheme.FS_SM, UITheme.GREY
-	)
-	vb.add_child(_star_info_lbl)
-
-	var star_btn := UITheme.btn("승급 (%d개 필요)" % star_needed, UITheme.FS_MD,
-		UITheme.GOLD if copies >= star_needed else UITheme.GREY_DIM)
-	star_btn.custom_minimum_size = Vector2(300, 52)
-	star_btn.pressed.connect(func(): _star_up())
-	vb.add_child(star_btn)
-
+	# 승급
+	var needed = _star_cost(a.rarity)
+	vb.add_child(UITheme.lbl("■ 승급  (복사본 필요: %d개, 보유: %d개)" % [needed, copies], UITheme.FS_MD, UITheme.PURPLE))
+	var sb := UITheme.btn("승급 (%d개 필요)" % needed, UITheme.FS_MD,
+		UITheme.GOLD if copies >= needed else UITheme.GREY_DIM)
+	sb.custom_minimum_size = Vector2(280, 52)
+	sb.disabled = a.rarity >= 5 or copies < needed
+	sb.pressed.connect(func(): _do_star(a))
+	vb.add_child(sb)
 	if a.rarity >= 5:
-		star_btn.text = "최고 등급 달성"
-		star_btn.disabled = true
-
+		vb.add_child(UITheme.lbl("✓ 최고 등급 달성", UITheme.FS_SM, UITheme.GOLD))
 	vb.add_child(UITheme.hsep())
 
-	# ── 코어 개방 ─────────────────────────────────────────
-	vb.add_child(UITheme.lbl("■ 코어 개방 (Lv.40 이상)", UITheme.FS_MD, UITheme.CYAN))
-	var core_unlocked: bool = a.get("core_unlocked", false)
-	_core_lbl = UITheme.lbl(
-		"코어: %s" % ("개방 완료 ✓" if core_unlocked else "미개방"),
-		UITheme.FS_SM, UITheme.GREEN if core_unlocked else UITheme.GREY
-	)
-	vb.add_child(_core_lbl)
-
-	if not core_unlocked:
-		var core_btn := UITheme.btn("코어 개방 🪙 5,000", UITheme.FS_MD,
-			UITheme.CYAN if a.level >= 40 else UITheme.GREY_DIM)
-		core_btn.custom_minimum_size = Vector2(300, 52)
-		core_btn.disabled = a.level < 40
-		core_btn.pressed.connect(func(): _unlock_core())
-		vb.add_child(core_btn)
+	# 코어 개방
+	var core_ok: bool = a.get("core_unlocked", false)
+	vb.add_child(UITheme.lbl("■ 코어 개방  (Lv.40 이상, 🪙 5,000)", UITheme.FS_MD, UITheme.CYAN))
+	if core_ok:
+		vb.add_child(UITheme.lbl("✓ 코어 개방 완료 — 코어 스킬 활성화", UITheme.FS_SM, UITheme.GREEN))
 	else:
-		vb.add_child(UITheme.lbl("코어 스킬 활성화됨", UITheme.FS_SM, UITheme.GREEN))
+		var cb := UITheme.btn("코어 개방  🪙 5,000", UITheme.FS_MD,
+			UITheme.CYAN if a.level >= 40 else UITheme.GREY_DIM)
+		cb.disabled = a.level < 40
+		cb.custom_minimum_size = Vector2(280, 52)
+		cb.pressed.connect(func(): _do_core(a))
+		vb.add_child(cb)
 
-# ── 액션 ──────────────────────────────────────────────────────
-func _level_up(count: int):
-	if _selected_agent == null: return
-	var a = _selected_agent
-	var levels := mini(count, MAX_LEVEL - a.level)
-	if levels <= 0:
-		_show_toast("최대 레벨입니다!")
-		return
+func _do_level(agent, cnt: int):
+	var actual = mini(cnt, MAX_LEVEL - agent.level)
+	if actual <= 0: return _toast("최대 레벨입니다!")
+	var total = 0
+	for i in actual: total += 100 + (agent.level + i) * 50 * agent.rarity
+	if not GameData.spend_gold(float(total)):
+		return _toast("🪙 골드가 부족합니다!")
+	agent.level += actual
+	GameData._add_quest_progress("levelup", actual)
+	_refresh_growth_detail()
 
-	var total_cost := 0
-	for i in levels:
-		total_cost += _level_cost(a.level + i)
+func _do_star(agent):
+	var needed = _star_cost(agent.rarity)
+	if GameData.unit_copies.get(agent.id, 0) < needed:
+		return _toast("복사본이 부족합니다!")
+	GameData.unit_copies[agent.id] -= needed
+	agent.rarity += 1
+	_refresh_growth_detail()
 
-	if not GameData.spend_gold(total_cost):
-		_show_toast("🪙 골드가 부족합니다!")
-		return
+func _do_core(agent):
+	if agent.level < 40: return _toast("Lv.40 이상 필요!")
+	if not GameData.spend_gold(5000.0): return _toast("🪙 골드 부족!")
+	agent.set_meta("core_unlocked", true)
+	_refresh_growth_detail()
 
-	a.level += levels
-	_populate_list()
-	_refresh_detail()
+func _star_cost(rarity: int) -> int:
+	match rarity: 1: return 30; 2: return 20; 3: return 10; 4: return 5
+	return 999
 
-func _star_up():
-	if _selected_agent == null: return
-	var a = _selected_agent
-	if a.rarity >= 5:
-		_show_toast("최고 등급입니다!")
-		return
-	var needed := _star_up_copies(a.rarity)
-	var copies: int = GameData.unit_copies.get(a.id, 0)
-	if copies < needed:
-		_show_toast("복사본이 부족합니다! (%d / %d)" % [copies, needed])
-		return
-	GameData.unit_copies[a.id] = copies - needed
-	a.rarity += 1
-	_populate_list()
-	_refresh_detail()
+# ═════════════════════════════════════════════════════════════
+# 서브탭 1: 장비
+# ═════════════════════════════════════════════════════════════
+var _gear_agent = null
+var _gear_slot_selected: String = ""
 
-func _unlock_core():
-	if _selected_agent == null: return
-	var a = _selected_agent
-	if a.level < 40:
-		_show_toast("Lv.40 이상 필요!")
-		return
-	if not GameData.spend_gold(5000):
-		_show_toast("🪙 골드가 부족합니다!")
-		return
-	a.set("core_unlocked", true)
-	_refresh_detail()
+func _make_equipment_tab() -> Control:
+	var hb := UITheme.hbox(0)
+	hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-# ── 헬퍼 ──────────────────────────────────────────────────────
-func _level_cost(lv: int) -> int:
-	return 100 + lv * 50
+	# 좌: 유닛 선택
+	var left := UITheme.crect(UITheme.BG_DARK, Vector2(200, UITheme.CONT_H - 56))
+	var title := UITheme.lbl("유닛 선택", UITheme.FS_SM, UITheme.GOLD)
+	title.position = Vector2(10, 8)
+	left.add_child(title)
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(0, 36); scroll.custom_minimum_size = Vector2(200, UITheme.CONT_H - 92)
+	left.add_child(scroll)
+	var vb := UITheme.vbox(4); vb.name = "GearListVB"; vb.custom_minimum_size = Vector2(190, 0)
+	scroll.add_child(vb)
+	for a in GameData.get_owned():
+		var btn := Button.new(); btn.text = "%s  Lv.%d" % [a.name_kr, a.level]
+		btn.add_theme_font_size_override("font_size", UITheme.FS_SM)
+		btn.custom_minimum_size = Vector2(190, 52)
+		var ag := a
+		btn.pressed.connect(func(): _select_gear_agent(ag))
+		vb.add_child(btn)
 
-func _star_up_copies(rarity: int) -> int:
-	match rarity:
-		5: return 999
-		4: return 5
-		3: return 10
-		2: return 20
-		_: return 30
+	# 우: 장비 슬롯 + 장착
+	var right := UITheme.crect(UITheme.BG_PANEL, Vector2(520, UITheme.CONT_H - 56))
+	right.name = "GearRight"
+	var hint := UITheme.lbl("← 유닛을 선택하세요", UITheme.FS_MD, UITheme.GREY)
+	hint.name = "GearHint"; hint.position = Vector2(60, 300)
+	right.add_child(hint)
 
-func _show_toast(msg: String):
-	var lbl := UITheme.lbl(msg, UITheme.FS_MD, UITheme.RED)
-	lbl.position = Vector2(230, UITheme.CONT_H / 2)
+	hb.add_child(left); hb.add_child(right)
+	return hb
+
+func _select_gear_agent(agent):
+	_gear_agent = agent
+	_refresh_gear_panel()
+
+func _refresh_gear_panel():
+	var right = _content.find_child("GearRight", true, false)
+	if not right: return
+	for c in right.get_children(): c.queue_free()
+
+	var a = _gear_agent
+	if not a: return
+
+	var vb := UITheme.vbox(12)
+	vb.position = Vector2(10, 10)
+	vb.custom_minimum_size = Vector2(500, 0)
+	right.add_child(vb)
+
+	# 유닛 헤더
+	var hdr := UITheme.hbox(10)
+	hdr.add_child(UITheme.crect(a.color, Vector2(56, 56)))
+	var iv := UITheme.vbox(3)
+	iv.add_child(UITheme.lbl(a.name_kr, UITheme.FS_LG, UITheme.rarity_color(a.rarity)))
+	var es = GameData.get_unit_equip_stats(a.id)
+	iv.add_child(UITheme.lbl("장비 보너스  ⚔ +%.0f%%  ❤ +%.0f%%" % [es["atk"]*100, es["hp"]*100],
+		UITheme.FS_SM, UITheme.ORANGE))
+	hdr.add_child(iv)
+	vb.add_child(hdr)
+	vb.add_child(UITheme.hsep())
+
+	vb.add_child(UITheme.lbl("── 장착 슬롯 ──", UITheme.FS_SM, UITheme.GOLD))
+
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	vb.add_child(grid)
+
+	var gear = GameData.get_unit_equipment(a.id)
+	for slot in SLOTS:
+		var eid = gear.get(slot, -1)
+		var eq  = GameData.get_equipment(eid) if eid != -1 else null
+		grid.add_child(_make_gear_slot_card(a, slot, eq))
+
+	vb.add_child(UITheme.hsep())
+	vb.add_child(UITheme.lbl("── 보유 장비 ──", UITheme.FS_SM, UITheme.CYAN))
+
+	var inv_scroll := ScrollContainer.new()
+	inv_scroll.custom_minimum_size = Vector2(500, 280)
+	var inv_grid := GridContainer.new()
+	inv_grid.columns = 3
+	inv_grid.add_theme_constant_override("h_separation", 8)
+	inv_grid.add_theme_constant_override("v_separation", 8)
+	inv_scroll.add_child(inv_grid)
+	vb.add_child(inv_scroll)
+
+	for eid in GameData.owned_equipment:
+		if eid == 0: continue   # 범용 재료 ID
+		var cnt = GameData.owned_equipment[eid]
+		if cnt <= 0: continue
+		var eq := GameData.get_equipment(eid)
+		if eq:
+			inv_grid.add_child(_make_inv_equip_card(a, eq, cnt))
+
+func _make_gear_slot_card(agent, slot: String, eq) -> Control:
+	var card := UITheme.crect(UITheme.BG_CARD, Vector2(155, 80))
+	card.add_child(_lbl_at(SLOT_NAMES.get(slot, slot), UITheme.FS_XS, UITheme.GREY, Vector2(6, 4)))
+	if eq:
+		card.add_child(_lbl_at(eq.name_kr, UITheme.FS_SM, UITheme.rarity_color(eq.rarity), Vector2(6, 22)))
+		card.add_child(_lbl_at("Lv.%d  ⚔+%.0f%%  ❤+%.0f%%" % [eq.level, eq.total_atk()*100, eq.total_hp()*100],
+			UITheme.FS_XS, UITheme.ORANGE, Vector2(6, 42)))
+		# 강화 버튼
+		var enh := UITheme.btn("+강화 🪙%d" % eq.enhance_cost(), UITheme.FS_XS, UITheme.CYAN)
+		enh.position = Vector2(6, 58); enh.custom_minimum_size = Vector2(100, 18)
+		var eid := eq.id
+		enh.pressed.connect(func(): _do_enhance(eid))
+		card.add_child(enh)
+		# 해제 버튼
+		var un := UITheme.btn("해제", UITheme.FS_XS, UITheme.RED)
+		un.position = Vector2(112, 58); un.custom_minimum_size = Vector2(38, 18)
+		var sl2 := slot; var ag := agent
+		un.pressed.connect(func(): GameData.unequip_item(ag.id, sl2); _refresh_gear_panel())
+		card.add_child(un)
+	else:
+		card.add_child(_lbl_at("빈 슬롯", UITheme.FS_SM, UITheme.GREY_DIM, Vector2(6, 28)))
+	return card
+
+func _make_inv_equip_card(agent, eq, cnt: int) -> Control:
+	var card := UITheme.crect(UITheme.rarity_bg(eq.rarity), Vector2(155, 80))
+	var border := UITheme.crect(UITheme.rarity_color(eq.rarity), Vector2(155, 2))
+	card.add_child(border)
+	card.add_child(_lbl_at(eq.name_kr, UITheme.FS_SM, UITheme.rarity_color(eq.rarity), Vector2(6, 4)))
+	card.add_child(_lbl_at("%s  Lv.%d" % [SLOT_NAMES.get(eq.slot,"?"), eq.level], UITheme.FS_XS, UITheme.GREY, Vector2(6, 24)))
+	card.add_child(_lbl_at("⚔+%.0f%%  ❤+%.0f%%" % [eq.total_atk()*100, eq.total_hp()*100],
+		UITheme.FS_XS, UITheme.ORANGE, Vector2(6, 42)))
+	card.add_child(_lbl_at("보유 × %d" % cnt, UITheme.FS_XS, UITheme.CYAN, Vector2(6, 60)))
+
+	var equip_btn := UITheme.btn("장착", UITheme.FS_XS, UITheme.GOLD)
+	equip_btn.position = Vector2(106, 56); equip_btn.custom_minimum_size = Vector2(44, 22)
+	var eid := eq.id; var ag := agent
+	equip_btn.pressed.connect(func(): GameData.equip_item(ag.id, eid); _refresh_gear_panel())
+	card.add_child(equip_btn)
+	return card
+
+func _do_enhance(equip_id: int):
+	if not GameData.enhance_equipment(equip_id):
+		_toast("골드 부족 또는 최대 강화 완료!")
+	else:
+		_refresh_gear_panel()
+
+# ═════════════════════════════════════════════════════════════
+# 서브탭 2: 유물
+# ═════════════════════════════════════════════════════════════
+func _make_relic_tab() -> Control:
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	var vb := UITheme.vbox(14)
+	vb.custom_minimum_size = Vector2(UITheme.W - 16, 0)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 8)
+	pad.add_theme_constant_override("margin_right", 8)
+	pad.add_theme_constant_override("margin_top", 8)
+	pad.add_child(vb); scroll.add_child(pad)
+
+	vb.add_child(UITheme.lbl("■ 활성 유물  (최대 3개)", UITheme.FS_MD, UITheme.GOLD))
+
+	# 총 보너스
+	var rb = GameData.get_relic_bonuses()
+	vb.add_child(UITheme.lbl(
+		"팀 보너스  ⚔ +%.0f%%  ❤ +%.0f%%  🪙 +%.0f%%  치명 +%.0f%%" % [
+			rb["global_atk"]*100, rb["global_hp"]*100,
+			rb["global_gold"]*100, rb["crit_bonus"]*100],
+		UITheme.FS_SM, UITheme.ORANGE))
+	vb.add_child(UITheme.hsep())
+
+	# 활성 슬롯
+	var active_hb := UITheme.hbox(10)
+	for i in 3:
+		var rid = GameData.active_relics[i] if i < GameData.active_relics.size() else -1
+		active_hb.add_child(_make_relic_slot(rid, i))
+	vb.add_child(active_hb)
+	vb.add_child(UITheme.hsep())
+
+	vb.add_child(UITheme.lbl("■ 보유 유물", UITheme.FS_MD, UITheme.CYAN))
+	for rid in GameData.owned_relics:
+		vb.add_child(_make_relic_card(rid))
+
+	return scroll
+
+func _make_relic_slot(relic_id: int, slot_idx: int) -> Control:
+	var card := UITheme.crect(UITheme.BG_CARD, Vector2(220, 100))
+	var border_col = UITheme.GOLD if relic_id != -1 else UITheme.GREY_DIM
+	var border := UITheme.crect(border_col, Vector2(220, 2))
+	card.add_child(border)
+	if relic_id != -1:
+		var r = GameData.get_relic(relic_id)
+		if r:
+			card.add_child(_lbl_at(r.name_kr, UITheme.FS_SM, UITheme.rarity_color(r.rarity), Vector2(8, 6)))
+			card.add_child(_lbl_at(r.desc, UITheme.FS_XS, UITheme.GREY, Vector2(8, 28)))
+			var un := UITheme.btn("해제", UITheme.FS_XS, UITheme.RED)
+			un.position = Vector2(170, 70); un.custom_minimum_size = Vector2(42, 24)
+			var rid := relic_id
+			un.pressed.connect(func(): GameData.unequip_relic(rid); _switch_sub(2))
+			card.add_child(un)
+	else:
+		card.add_child(_lbl_at("슬롯 %d (비어있음)" % (slot_idx+1), UITheme.FS_SM, UITheme.GREY_DIM, Vector2(8, 36)))
+	return card
+
+func _make_relic_card(relic_id: int) -> Control:
+	var r = GameData.get_relic(relic_id)
+	if not r: return Control.new()
+	var card := UITheme.crect(UITheme.rarity_bg(r.rarity), Vector2(UITheme.W - 32, 80))
+	var border := UITheme.crect(UITheme.rarity_color(r.rarity), Vector2(4, 80))
+	card.add_child(border)
+	card.add_child(_lbl_at(r.name_kr, UITheme.FS_MD, UITheme.rarity_color(r.rarity), Vector2(14, 8)))
+	card.add_child(_lbl_at(r.desc, UITheme.FS_SM, UITheme.WHITE, Vector2(14, 34)))
+	var active = relic_id in GameData.active_relics
+	var btn_text = "해제" if active else "장착"
+	var btn_col = UITheme.RED if active else UITheme.GREEN
+	var ab := UITheme.btn(btn_text, UITheme.FS_SM, btn_col)
+	ab.custom_minimum_size = Vector2(80, 50); ab.position = Vector2(UITheme.W - 110, 14)
+	var rid := relic_id
+	if active:
+		ab.pressed.connect(func(): GameData.unequip_relic(rid); _switch_sub(2))
+	else:
+		ab.pressed.connect(func():
+			if not GameData.equip_relic(rid): _toast("유물 슬롯이 가득 찼습니다! (최대 3개)")
+			else: _switch_sub(2)
+		)
+	card.add_child(ab)
+	return card
+
+# ─────────────────────────────────────────────────────────────
+# 헬퍼
+# ─────────────────────────────────────────────────────────────
+func _lbl_at(text: String, fs: int, col: Color, pos: Vector2) -> Label:
+	var l := UITheme.lbl(text, fs, col); l.position = pos; return l
+
+func _toast(msg: String):
+	var lbl := UITheme.lbl(msg, UITheme.FS_SM, UITheme.RED)
+	lbl.position = Vector2(UITheme.W / 2 - 160, UITheme.CONT_H / 2)
+	lbl.custom_minimum_size = Vector2(320, 0)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(lbl)
 	var tw := create_tween()
-	tw.tween_property(lbl, "position:y", lbl.position.y - 40, 1.2)
-	tw.parallel().tween_property(lbl, "modulate:a", 0.0, 1.2)
+	tw.tween_property(lbl, "position:y", lbl.position.y - 50, 1.4)
+	tw.parallel().tween_property(lbl, "modulate:a", 0.0, 1.4)
 	tw.tween_callback(lbl.queue_free)
-
-func refresh():
-	_populate_list()
-	if _selected_agent != null:
-		_refresh_detail()
