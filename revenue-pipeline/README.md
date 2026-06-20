@@ -116,6 +116,7 @@
 - **목표:** 월 $500~900 (목표 100만원 도달/근접).
 
 > 상세 주차별 체크리스트는 [`90-day-action-plan.md`](./90-day-action-plan.md) 참고.
+> 보유 중이던 아이템(모바일 게임·AI 전자책·POD 등)의 적합도 평가와 재배치는 [`opportunity-evaluation.md`](./opportunity-evaluation.md) 참고.
 
 ---
 
