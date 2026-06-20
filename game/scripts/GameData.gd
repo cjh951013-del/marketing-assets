@@ -823,3 +823,286 @@ func _build_relic_db():
 		Relic.new(9, "전설의 휘장",    "모든 능력치 +15%",            5, 0.15, 0.15, 0.15, 0.08),
 		Relic.new(10,"치즈파 두목 배지","공격력+25%, 치명타율+10%",   5, 0.25, 0.00, 0.00, 0.10),
 	]
+
+# ─────────────────────────────────────────────────────────────
+# 업적 시스템
+# ─────────────────────────────────────────────────────────────
+const ACHIEVEMENT_DEFS := [
+	{"id":"first_win",    "name":"첫 승리",       "desc":"스테이지 클리어 1회",     "type":"total_stages",   "goal":1,       "reward":{"gold":500}},
+	{"id":"stage_10",     "name":"신병 탈출",      "desc":"스테이지 10회 클리어",    "type":"total_stages",   "goal":10,      "reward":{"gems":30}},
+	{"id":"stage_50",     "name":"중급 전사",       "desc":"스테이지 50회 클리어",    "type":"total_stages",   "goal":50,      "reward":{"gems":80}},
+	{"id":"stage_200",    "name":"정예 대원",       "desc":"스테이지 200회 클리어",   "type":"total_stages",   "goal":200,     "reward":{"gems":200}},
+	{"id":"summon_10",    "name":"첫 소환",         "desc":"총 소환 10회",            "type":"total_pulls",    "goal":10,      "reward":{"gold":1000}},
+	{"id":"summon_100",   "name":"소환 중독자",     "desc":"총 소환 100회",           "type":"total_pulls",    "goal":100,     "reward":{"gems":50}},
+	{"id":"summon_500",   "name":"가챠 고수",       "desc":"총 소환 500회",           "type":"total_pulls",    "goal":500,     "reward":{"legend_ticket":1}},
+	{"id":"collect_5",    "name":"팀 빌더",         "desc":"유닛 5종 보유",           "type":"unit_count",     "goal":5,       "reward":{"gold":2000}},
+	{"id":"collect_10",   "name":"수집광",          "desc":"유닛 10종 보유",          "type":"unit_count",     "goal":10,      "reward":{"gems":50}},
+	{"id":"collect_21",   "name":"완전 수집",       "desc":"전 유닛 21종 보유",       "type":"unit_count",     "goal":21,      "reward":{"legend_ticket":2}},
+	{"id":"arena_win_10", "name":"투기장 참가자",   "desc":"투기장 10승",             "type":"arena_wins",     "goal":10,      "reward":{"gems":30}},
+	{"id":"arena_win_50", "name":"투기장 강자",     "desc":"투기장 50승",             "type":"arena_wins",     "goal":50,      "reward":{"gems":100}},
+	{"id":"dungeon_10",   "name":"던전 탐험가",     "desc":"던전 10회 클리어",        "type":"dungeon_clears", "goal":10,      "reward":{"gold":5000}},
+	{"id":"tower_10",     "name":"탑 도전자",       "desc":"무한의 탑 10층 달성",     "type":"tower_record",   "goal":10,      "reward":{"gems":50}},
+	{"id":"tower_50",     "name":"탑의 정복자",     "desc":"무한의 탑 50층 달성",     "type":"tower_record",   "goal":50,      "reward":{"gems":200}},
+	{"id":"gold_100k",    "name":"황금 손",         "desc":"누적 골드 100,000",       "type":"total_gold",     "goal":100000,  "reward":{"gems":30}},
+	{"id":"gold_1m",      "name":"골드 부자",       "desc":"누적 골드 1,000,000",     "type":"total_gold",     "goal":1000000, "reward":{"gems":100}},
+	{"id":"boss_5",       "name":"보스 사냥꾼",     "desc":"월드 보스 5회 공격",       "type":"boss_attacks",   "goal":5,       "reward":{"gems":20}},
+	{"id":"boss_30",      "name":"보스 킬러",       "desc":"월드 보스 30회 공격",      "type":"boss_attacks",   "goal":30,      "reward":{"gems":80}},
+	{"id":"transcend_1",  "name":"초월의 시작",     "desc":"유닛 초월 1회",            "type":"transcend",      "goal":1,       "reward":{"gems":50}},
+]
+
+var ach_claimed: Array = []
+
+func get_achievements() -> Array:
+	var result = []
+	for d in ACHIEVEMENT_DEFS:
+		var entry = d.duplicate()
+		entry["progress"]  = _get_ach_value(d["type"])
+		entry["done"]      = d["id"] in ach_claimed
+		entry["claimable"] = entry["progress"] >= d["goal"] and not entry["done"]
+		result.append(entry)
+	return result
+
+func _get_ach_value(type_key: String) -> int:
+	match type_key:
+		"total_stages":   return int(ach.get("total_stages",   0))
+		"total_pulls":    return int(ach.get("total_pulls",    0))
+		"unit_count":     return owned_ids.size()
+		"arena_wins":     return int(ach.get("arena_wins",     0))
+		"dungeon_clears": return int(ach.get("dungeon_clears", 0))
+		"tower_record":   return tower_record
+		"total_gold":     return int(ach.get("total_gold",   0.0))
+		"boss_attacks":   return int(ach.get("boss_attacks",   0))
+		"transcend":      return int(ach.get("transcend",      0))
+	return 0
+
+func claim_achievement(ach_id: String) -> bool:
+	if ach_id in ach_claimed: return false
+	var d: Dictionary = {}
+	for a in ACHIEVEMENT_DEFS:
+		if a["id"] == ach_id: d = a; break
+	if d.is_empty(): return false
+	if _get_ach_value(d["type"]) < d["goal"]: return false
+	ach_claimed.append(ach_id)
+	var rw: Dictionary = d["reward"]
+	if rw.get("gold",          0) > 0: add_gold(float(rw["gold"]))
+	if rw.get("gems",          0) > 0: add_gems(rw["gems"])
+	if rw.get("legend_ticket", 0) > 0: legend_tickets += rw["legend_ticket"]
+	return true
+
+# ─────────────────────────────────────────────────────────────
+# 무한의 탑 (Endless Tower)
+# ─────────────────────────────────────────────────────────────
+var tower_floor:  int = 1   # 현재 도전 층
+var tower_record: int = 0   # 최고 기록 층
+var tower_attempts_today: int = 0
+var tower_date: String = ""
+const TOWER_DAILY_MAX := 3
+
+func can_challenge_tower() -> bool:
+	_reset_tower_if_needed()
+	return tower_attempts_today < TOWER_DAILY_MAX
+
+func challenge_tower() -> Dictionary:
+	_reset_tower_if_needed()
+	if not can_challenge_tower():
+		return {"success": false, "msg": "오늘 도전 횟수 초과 (%d/%d)" % [tower_attempts_today, TOWER_DAILY_MAX]}
+	tower_attempts_today += 1
+	var power_req = 500 + tower_floor * 180
+	var win = squad_power() >= int(power_req * 0.88)
+	if win:
+		var cleared = tower_floor
+		tower_floor += 1
+		tower_record = maxi(tower_record, cleared)
+		var gold_r = cleared * 120
+		var gem_r  = cleared * 2 if cleared % 10 == 0 else 0
+		add_gold(float(gold_r))
+		if gem_r > 0: add_gems(gem_r)
+		_add_bp_exp(15)
+		return {"success": true, "floor": cleared, "gold": gold_r, "gems": gem_r}
+	else:
+		return {"success": false, "floor": tower_floor,
+			"msg": "전투력 부족 (필요 %d / 현재 %d)" % [power_req, squad_power()]}
+
+func _reset_tower_if_needed():
+	if tower_date != _today():
+		tower_date = _today()
+		tower_attempts_today = 0
+
+# ─────────────────────────────────────────────────────────────
+# 월드 보스 (World Boss)
+# ─────────────────────────────────────────────────────────────
+var world_boss_stage: int = 1
+var world_boss_max_hp: int = 10_000_000
+var world_boss_current_hp: int = 10_000_000
+var world_boss_my_damage: int = 0
+var world_boss_attacks_today: int = 0
+var world_boss_date: String = ""
+const WORLD_BOSS_DAILY_MAX := 3
+
+func can_attack_boss() -> bool:
+	_reset_boss_if_needed()
+	return world_boss_attacks_today < WORLD_BOSS_DAILY_MAX
+
+func attack_world_boss() -> Dictionary:
+	_reset_boss_if_needed()
+	if not can_attack_boss():
+		return {"success": false, "msg": "오늘 도전 횟수 초과"}
+	world_boss_attacks_today += 1
+	ach["boss_attacks"] = ach.get("boss_attacks", 0) + 1
+	var dmg = int(squad_power() * randf_range(0.85, 1.25) * 800)
+	world_boss_my_damage += dmg
+	world_boss_current_hp = maxi(0, world_boss_current_hp - dmg)
+	var gem_r  = clampi(dmg / 4000, 1, 40)
+	var gold_r = dmg / 8
+	add_gems(gem_r); add_gold(float(gold_r))
+	_add_bp_exp(20)
+	var cleared = world_boss_current_hp <= 0
+	if cleared:
+		world_boss_stage  += 1
+		world_boss_max_hp  = int(10_000_000 * pow(1.35, world_boss_stage - 1))
+		world_boss_current_hp = world_boss_max_hp
+		add_gems(100)
+	return {"success": true, "damage": dmg, "gems": gem_r, "gold": gold_r, "cleared": cleared}
+
+func get_boss_hp_pct() -> float:
+	if world_boss_max_hp <= 0: return 0.0
+	return float(world_boss_current_hp) / float(world_boss_max_hp)
+
+func _reset_boss_if_needed():
+	if world_boss_date != _today():
+		world_boss_date = _today()
+		world_boss_attacks_today = 0
+		world_boss_my_damage = 0
+
+# ─────────────────────────────────────────────────────────────
+# 도감 (Collection Codex)
+# ─────────────────────────────────────────────────────────────
+func get_codex_bonus() -> Dictionary:
+	var count = owned_ids.size()
+	var atk = 0.0; var hp = 0.0
+	if count >= 5:  atk += 0.02; hp += 0.02
+	if count >= 10: atk += 0.03; hp += 0.03
+	if count >= 15: atk += 0.05; hp += 0.05
+	if count >= 21: atk += 0.10; hp += 0.10
+	return {"atk": atk, "hp": hp, "count": count, "total": 21}
+
+# ─────────────────────────────────────────────────────────────
+# 초월 시스템 (Transcendence — 5★ 이후 성장)
+# ─────────────────────────────────────────────────────────────
+var unit_transcend: Dictionary = {}   # {unit_id: level 0-5}
+
+func get_transcend_level(unit_id: int) -> int:
+	return unit_transcend.get(unit_id, 0)
+
+func get_transcend_cost(unit_id: int) -> int:
+	return (get_transcend_level(unit_id) + 1) * 3
+
+func can_transcend(unit_id: int) -> bool:
+	var a = get_by_id(unit_id)
+	if not a or a.rarity < 5: return false
+	if get_transcend_level(unit_id) >= 5: return false
+	return unit_copies.get(unit_id, 0) >= get_transcend_cost(unit_id)
+
+func transcend_unit(unit_id: int) -> bool:
+	if not can_transcend(unit_id): return false
+	unit_copies[unit_id]      = unit_copies.get(unit_id, 0) - get_transcend_cost(unit_id)
+	unit_transcend[unit_id]   = get_transcend_level(unit_id) + 1
+	ach["transcend"]          = ach.get("transcend", 0) + 1
+	_add_bp_exp(50)
+	return true
+
+func get_transcend_bonus(unit_id: int) -> Dictionary:
+	const STEPS := [
+		{"atk":0.00,"hp":0.00},
+		{"atk":0.15,"hp":0.00},
+		{"atk":0.15,"hp":0.15},
+		{"atk":0.35,"hp":0.15},
+		{"atk":0.35,"hp":0.35},
+		{"atk":0.75,"hp":0.75},
+	]
+	var t = clampi(get_transcend_level(unit_id), 0, 5)
+	return STEPS[t]
+
+# ─────────────────────────────────────────────────────────────
+# VIP 시스템
+# ─────────────────────────────────────────────────────────────
+var vip_level: int       = 0
+var vip_total_spent: int = 0   # 누적 구매 원화 (₩)
+
+const VIP_THRESHOLDS := [0, 10000, 30000, 100000, 300000, 1000000, 3000000]
+const VIP_PERKS := [
+	{"label":"없음",  "daily_gems":0,   "arena_bonus":0,  "gold_bonus":0.00},
+	{"label":"VIP 1", "daily_gems":30,  "arena_bonus":1,  "gold_bonus":0.05},
+	{"label":"VIP 2", "daily_gems":60,  "arena_bonus":2,  "gold_bonus":0.10},
+	{"label":"VIP 3", "daily_gems":100, "arena_bonus":3,  "gold_bonus":0.15},
+	{"label":"VIP 4", "daily_gems":150, "arena_bonus":5,  "gold_bonus":0.20},
+	{"label":"VIP 5", "daily_gems":200, "arena_bonus":7,  "gold_bonus":0.25},
+	{"label":"VIP 6", "daily_gems":300, "arena_bonus":10, "gold_bonus":0.30},
+]
+
+func get_vip_perks() -> Dictionary:
+	return VIP_PERKS[clampi(vip_level, 0, VIP_PERKS.size() - 1)]
+
+func get_vip_progress() -> float:
+	if vip_level >= VIP_THRESHOLDS.size() - 1: return 1.0
+	var cur = VIP_THRESHOLDS[vip_level]
+	var nxt = VIP_THRESHOLDS[vip_level + 1]
+	return float(vip_total_spent - cur) / float(nxt - cur)
+
+func buy_gems_package(pkg_gems: int, pkg_krw: int):
+	vip_total_spent += pkg_krw
+	add_gems(pkg_gems)
+	while vip_level < VIP_THRESHOLDS.size() - 1 and vip_total_spent >= VIP_THRESHOLDS[vip_level + 1]:
+		vip_level += 1
+
+# ─────────────────────────────────────────────────────────────
+# 연구소 (Research Lab)
+# ─────────────────────────────────────────────────────────────
+const RESEARCH_DEFS := [
+	{"id":"atk1",  "name":"공격력 연구 I",  "desc":"공격력 +2%/레벨", "type":"atk",  "cost_gold":5000,  "cost_gems":0, "max_lv":5},
+	{"id":"hp1",   "name":"체력 연구 I",    "desc":"체력 +2%/레벨",   "type":"hp",   "cost_gold":5000,  "cost_gems":0, "max_lv":5},
+	{"id":"gold1", "name":"채굴 연구 I",    "desc":"골드 +5%/레벨",   "type":"gold", "cost_gold":8000,  "cost_gems":0, "max_lv":5},
+	{"id":"crit1", "name":"치명타 연구 I",  "desc":"치명타 +3%/레벨", "type":"crit", "cost_gold":10000, "cost_gems":0, "max_lv":5},
+	{"id":"atk2",  "name":"공격력 연구 II", "desc":"공격력 +5%/레벨", "type":"atk",  "cost_gold":30000, "cost_gems":0, "max_lv":5, "req":"atk1:5"},
+	{"id":"hp2",   "name":"체력 연구 II",   "desc":"체력 +5%/레벨",   "type":"hp",   "cost_gold":30000, "cost_gems":0, "max_lv":5, "req":"hp1:5"},
+	{"id":"spd1",  "name":"이속 연구 I",    "desc":"이속 +3%/레벨",   "type":"spd",  "cost_gold":15000, "cost_gems":0, "max_lv":3},
+	{"id":"pity1", "name":"소환 연구 I",    "desc":"피티 -2/레벨",    "type":"pity", "cost_gold":0,     "cost_gems":50,"max_lv":3},
+]
+
+const RESEARCH_PER_LV := {"atk":0.02,"hp":0.02,"gold":0.05,"crit":0.03,"spd":0.03}
+const RESEARCH_PER_LV2 := {"atk2":0.05,"hp2":0.05}
+
+var research_levels: Dictionary = {}
+
+func get_research_level(rid: String) -> int:
+	return research_levels.get(rid, 0)
+
+func can_research(rid: String) -> bool:
+	for d in RESEARCH_DEFS:
+		if d["id"] != rid: continue
+		if get_research_level(rid) >= d["max_lv"]: return false
+		if d.has("req"):
+			var parts = d["req"].split(":")
+			if get_research_level(parts[0]) < int(parts[1]): return false
+		return true
+	return false
+
+func do_research(rid: String) -> bool:
+	if not can_research(rid): return false
+	for d in RESEARCH_DEFS:
+		if d["id"] != rid: continue
+		if d["cost_gold"] > 0 and not spend_gold(float(d["cost_gold"])): return false
+		if d["cost_gems"] > 0 and not spend_gems(d["cost_gems"]):        return false
+		research_levels[rid] = get_research_level(rid) + 1
+		_add_bp_exp(30)
+		return true
+	return false
+
+func get_research_bonus() -> Dictionary:
+	var r := {"atk":0.0,"hp":0.0,"gold":0.0,"crit":0.0,"spd":0.0}
+	for d in RESEARCH_DEFS:
+		var lvl = get_research_level(d["id"])
+		if lvl <= 0: continue
+		var per = RESEARCH_PER_LV2.get(d["id"], RESEARCH_PER_LV.get(d["type"], 0.0))
+		r[d["type"]] = r.get(d["type"], 0.0) + per * lvl
+	return r

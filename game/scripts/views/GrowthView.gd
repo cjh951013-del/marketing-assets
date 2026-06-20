@@ -40,7 +40,7 @@ func _make_sub_tab_bar() -> Control:
 	var hb  := UITheme.hbox(0)
 	hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.add_child(hb)
-	for i in ["📈 성장","⚔ 장비","💎 유물"]:
+	for i in ["📈 성장","⚔ 장비","💎 유물","📚 도감","🔬 연구소"]:
 		var b := Button.new(); b.text = i
 		b.add_theme_font_size_override("font_size", UITheme.FS_SM)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -59,6 +59,8 @@ func _switch_sub(idx: int):
 		0: _content.add_child(_make_growth_tab())
 		1: _content.add_child(_make_equipment_tab())
 		2: _content.add_child(_make_relic_tab())
+		3: _content.add_child(_make_codex_tab())
+		4: _content.add_child(_make_research_tab())
 
 func refresh():
 	_switch_sub(_sub)
@@ -196,6 +198,30 @@ func _refresh_growth_detail():
 		cb.custom_minimum_size = Vector2(280, 52)
 		cb.pressed.connect(func(): _do_core(a))
 		vb.add_child(cb)
+	vb.add_child(UITheme.hsep())
+
+	# 초월 (5★ 전용)
+	if a.rarity >= 5:
+		var t_lv = GameData.get_transcend_level(a.id)
+		var copies_needed = GameData.get_transcend_cost(a.id)
+		var cur_copies = GameData.unit_copies.get(a.id, 0)
+		var stars_str = "◈".repeat(t_lv) + "◇".repeat(5 - t_lv)
+		vb.add_child(UITheme.lbl("■ 초월  %s  (%d/5)" % [stars_str, t_lv], UITheme.FS_MD, UITheme.ORANGE))
+		if t_lv < 5:
+			vb.add_child(UITheme.lbl("필요 사본: %d개  보유: %d개" % [copies_needed, cur_copies],
+				UITheme.FS_SM, UITheme.GREEN if cur_copies >= copies_needed else UITheme.RED))
+			var tb := UITheme.btn("초월 (%d개 소모)" % copies_needed, UITheme.FS_MD,
+				UITheme.ORANGE if GameData.can_transcend(a.id) else UITheme.GREY_DIM)
+			tb.disabled = not GameData.can_transcend(a.id)
+			tb.custom_minimum_size = Vector2(280, 52)
+			tb.pressed.connect(func(): _do_transcend(a))
+			vb.add_child(tb)
+			var t_bonus = GameData.get_transcend_bonus(a.id)
+			if t_bonus["atk"] > 0 or t_bonus["hp"] > 0:
+				vb.add_child(UITheme.lbl("현재 보너스: 공격력 +%d%%  체력 +%d%%" % [
+					int(t_bonus["atk"]*100), int(t_bonus["hp"]*100)], UITheme.FS_SM, UITheme.ORANGE))
+		else:
+			vb.add_child(UITheme.lbl("✓ 최고 초월 달성! 공격력 +75%  체력 +75%", UITheme.FS_SM, UITheme.ORANGE))
 
 func _do_level(agent, cnt: int):
 	var actual = mini(cnt, MAX_LEVEL - agent.level)
@@ -220,6 +246,11 @@ func _do_core(agent):
 	if agent.level < 40: return _toast("Lv.40 이상 필요!")
 	if not GameData.spend_gold(5000.0): return _toast("🪙 골드 부족!")
 	agent.set_meta("core_unlocked", true)
+	_refresh_growth_detail()
+
+func _do_transcend(agent):
+	if not GameData.transcend_unit(agent.id):
+		return _toast("초월 조건 미충족!")
 	_refresh_growth_detail()
 
 func _star_cost(rarity: int) -> int:
@@ -454,6 +485,154 @@ func _make_relic_card(relic_id: int) -> Control:
 			else: _switch_sub(2)
 		)
 	card.add_child(ab)
+	return card
+
+# ═════════════════════════════════════════════════════════════
+# 서브탭 3: 도감 (Collection Codex)
+# ═════════════════════════════════════════════════════════════
+func _make_codex_tab() -> Control:
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var vb := UITheme.vbox(12)
+	vb.custom_minimum_size = Vector2(UITheme.W - 16, 0)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 8)
+	pad.add_theme_constant_override("margin_right", 8)
+	pad.add_theme_constant_override("margin_top", 8)
+	pad.add_child(vb); scroll.add_child(pad)
+
+	var bonus = GameData.get_codex_bonus()
+	var count = bonus["count"]; var total = bonus["total"]
+	vb.add_child(UITheme.lbl("📚 수집 도감", UITheme.FS_XL, UITheme.GOLD))
+	vb.add_child(UITheme.lbl("더 많은 유닛을 수집할수록 팀 전체가 강해집니다", UITheme.FS_SM, UITheme.GREY))
+	vb.add_child(UITheme.hsep())
+
+	vb.add_child(UITheme.lbl("수집 현황: %d / %d" % [count, total], UITheme.FS_LG, UITheme.CYAN))
+	var cb_root := Control.new(); cb_root.custom_minimum_size = Vector2(UITheme.W - 32, 22)
+	cb_root.add_child(UITheme.crect(UITheme.BG_CARD, Vector2(UITheme.W - 32, 22)))
+	cb_root.add_child(UITheme.crect(UITheme.CYAN, Vector2((UITheme.W - 32) * float(count)/float(total), 22)))
+	vb.add_child(cb_root)
+
+	if bonus["atk"] > 0 or bonus["hp"] > 0:
+		var brow := UITheme.hbox(16)
+		brow.add_child(UITheme.lbl("팀 보너스:", UITheme.FS_MD, UITheme.GOLD))
+		brow.add_child(UITheme.lbl("공격력 +%d%%" % int(bonus["atk"]*100), UITheme.FS_MD, UITheme.ORANGE))
+		brow.add_child(UITheme.lbl("체력 +%d%%"   % int(bonus["hp"]*100),  UITheme.FS_MD, UITheme.GREEN))
+		vb.add_child(brow)
+	vb.add_child(UITheme.hsep())
+
+	vb.add_child(UITheme.lbl("■ 수집 달성 보너스", UITheme.FS_MD, UITheme.CYAN))
+	const MILES := [[5,"공격력 +2%  체력 +2%"],[10,"공격력 +5%  체력 +5%"],
+	                [15,"공격력 +10%  체력 +10%"],[21,"공격력 +20%  체력 +20% ✦ 완전 수집"]]
+	for ms in MILES:
+		var col  = UITheme.GREEN if count >= ms[0] else UITheme.GREY
+		var mark = "✓ " if count >= ms[0] else "□ "
+		vb.add_child(UITheme.lbl("%s%d종: %s" % [mark, ms[0], ms[1]], UITheme.FS_SM, col))
+	vb.add_child(UITheme.hsep())
+
+	vb.add_child(UITheme.lbl("■ 유닛 도감", UITheme.FS_MD, UITheme.GOLD))
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	for a in GameData.all_agents:
+		grid.add_child(_make_codex_card(a))
+	vb.add_child(grid)
+	return scroll
+
+func _make_codex_card(a) -> Control:
+	var owned  = GameData.is_owned(a.id)
+	var card   := UITheme.crect(UITheme.rarity_bg(a.rarity) if owned else UITheme.BG_DARK, Vector2(162, 88))
+	card.add_child(UITheme.crect(UITheme.rarity_color(a.rarity) if owned else UITheme.GREY_DIM, Vector2(162, 3)))
+	var name_c = UITheme.rarity_color(a.rarity) if owned else UITheme.GREY_DIM
+	var n  := UITheme.lbl(a.name_kr if owned else "???", UITheme.FS_SM, name_c); n.position = Vector2(6, 8)
+	var st := UITheme.lbl(("★" * a.rarity) if owned else "- -", UITheme.FS_XS, name_c); st.position = Vector2(6, 32)
+	card.add_child(n); card.add_child(st)
+	if owned:
+		var t_lv = GameData.get_transcend_level(a.id)
+		var cp := UITheme.lbl("사본 %d개" % GameData.unit_copies.get(a.id, 0), UITheme.FS_XS, UITheme.GREY)
+		cp.position = Vector2(6, 54); card.add_child(cp)
+		if t_lv > 0:
+			var tl := UITheme.lbl("초월 %d" % t_lv, UITheme.FS_XS, UITheme.ORANGE)
+			tl.position = Vector2(86, 54); card.add_child(tl)
+	return card
+
+# ═════════════════════════════════════════════════════════════
+# 서브탭 4: 연구소 (Research Lab)
+# ═════════════════════════════════════════════════════════════
+func _make_research_tab() -> Control:
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var vb := UITheme.vbox(10)
+	vb.custom_minimum_size = Vector2(UITheme.W - 16, 0)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 8)
+	pad.add_theme_constant_override("margin_right", 8)
+	pad.add_theme_constant_override("margin_top", 8)
+	pad.add_child(vb); scroll.add_child(pad)
+
+	vb.add_child(UITheme.lbl("🔬 연구소", UITheme.FS_XL, UITheme.GOLD))
+	vb.add_child(UITheme.lbl("연구를 통해 팀의 능력치를 영구적으로 강화합니다", UITheme.FS_SM, UITheme.GREY))
+
+	var rb = GameData.get_research_bonus()
+	vb.add_child(UITheme.lbl(
+		"현재 효과: 공격력 +%d%%  체력 +%d%%  골드 +%d%%" % [
+		int(rb["atk"]*100), int(rb["hp"]*100), int(rb["gold"]*100)],
+		UITheme.FS_SM, UITheme.CYAN))
+	vb.add_child(UITheme.lbl("보유: 🪙 %d  💎 %d" % [int(GameData.gold), GameData.gems],
+		UITheme.FS_SM, UITheme.GOLD))
+	vb.add_child(UITheme.hsep())
+
+	for d in GameData.RESEARCH_DEFS:
+		vb.add_child(_make_research_card(d))
+	return scroll
+
+func _make_research_card(d: Dictionary) -> Control:
+	var rid    = d["id"]
+	var lv     = GameData.get_research_level(rid)
+	var max_lv = d["max_lv"]
+	var can    = GameData.can_research(rid)
+	var locked = d.has("req") and lv == 0 and not can
+	var card   := UITheme.crect(UITheme.BG_CARD if not locked else UITheme.BG_DARK, Vector2(UITheme.W - 32, 100))
+	card.add_child(UITheme.crect(
+		UITheme.CYAN if can else (UITheme.GREY_DIM if locked else UITheme.GREY), Vector2(4, 100)))
+
+	var nm := UITheme.lbl(d["name"], UITheme.FS_MD, UITheme.WHITE if not locked else UITheme.GREY_DIM)
+	nm.position = Vector2(14, 8); card.add_child(nm)
+	var lv_l := UITheme.lbl("Lv.%d / %d" % [lv, max_lv], UITheme.FS_SM,
+		UITheme.GOLD if lv > 0 else UITheme.GREY_DIM)
+	lv_l.position = Vector2(14, 34); card.add_child(lv_l)
+	var ds := UITheme.lbl(d["desc"], UITheme.FS_XS, UITheme.GREY)
+	ds.position = Vector2(14, 56); card.add_child(ds)
+
+	var bar_root := Control.new(); bar_root.custom_minimum_size = Vector2(280, 10)
+	bar_root.position = Vector2(14, 80)
+	bar_root.add_child(UITheme.crect(UITheme.BG_INNER, Vector2(280, 10)))
+	bar_root.add_child(UITheme.crect(UITheme.CYAN, Vector2(280 * float(lv)/float(max_lv), 10)))
+	card.add_child(bar_root)
+
+	if locked:
+		var req_str = d.get("req", "").replace(":", " Lv.")
+		var lk := UITheme.lbl("🔒 선행: " + req_str, UITheme.FS_XS, UITheme.GREY_DIM)
+		lk.position = Vector2(UITheme.W - 280, 40); card.add_child(lk)
+		return card
+
+	if lv >= max_lv:
+		var dn := UITheme.lbl("✓ 완료", UITheme.FS_MD, UITheme.GREEN)
+		dn.position = Vector2(UITheme.W - 110, 30); card.add_child(dn)
+	else:
+		var cost_str = "🪙 %d" % d["cost_gold"] if d["cost_gold"] > 0 else "💎 %d" % d["cost_gems"]
+		var cl := UITheme.lbl(cost_str, UITheme.FS_SM, UITheme.GOLD)
+		cl.position = Vector2(UITheme.W - 190, 18); card.add_child(cl)
+		var rb := UITheme.btn("연구", UITheme.FS_SM, UITheme.CYAN if can else UITheme.GREY_DIM)
+		rb.position = Vector2(UITheme.W - 112, 38); rb.custom_minimum_size = Vector2(86, 44)
+		rb.disabled = not can
+		var r_id := rid
+		rb.pressed.connect(func():
+			if not GameData.do_research(r_id): _toast("조건 미충족 또는 재화 부족!")
+			else: _switch_sub(4)
+		)
+		card.add_child(rb)
 	return card
 
 # ─────────────────────────────────────────────────────────────

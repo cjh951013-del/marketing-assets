@@ -33,7 +33,7 @@ func _make_sub_tab_bar() -> Control:
 	var bg := UITheme.crect(UITheme.BG_DARK, Vector2(UITheme.W, 56))
 	var hb  := UITheme.hbox(0); hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.add_child(hb)
-	for txt in ["🗺 스테이지","⚒ 던전","🏟 투기장","📦 파견"]:
+	for txt in ["🗺 스테이지","⚒ 던전","🏟 투기장","📦 파견","🗼 무한탑","👹 월드보스"]:
 		var b := Button.new(); b.text = txt
 		b.add_theme_font_size_override("font_size", UITheme.FS_SM)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -53,6 +53,8 @@ func _switch_sub(idx: int):
 		1: _content.add_child(_make_dungeon_tab())
 		2: _content.add_child(_make_arena_tab())
 		3: _content.add_child(_make_dispatch_tab())
+		4: _content.add_child(_make_tower_tab())
+		5: _content.add_child(_make_boss_tab())
 
 func refresh():
 	_switch_sub(_sub)
@@ -410,6 +412,151 @@ func _start_dispatch(mission_id: int, slots: int):
 		_switch_sub(3)
 	else:
 		_toast("파견 시작 실패")
+
+# ═════════════════════════════════════════════════════════════
+# 서브탭 4: 무한의 탑
+# ═════════════════════════════════════════════════════════════
+func _make_tower_tab() -> Control:
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var vb := UITheme.vbox(14)
+	vb.custom_minimum_size = Vector2(UITheme.W - 16, 0)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 8)
+	pad.add_theme_constant_override("margin_right", 8)
+	pad.add_theme_constant_override("margin_top", 8)
+	pad.add_child(vb); scroll.add_child(pad)
+
+	vb.add_child(UITheme.lbl("🗼 무한의 탑", UITheme.FS_XL, UITheme.GOLD))
+	vb.add_child(UITheme.lbl("층을 올라갈수록 강해지는 영원의 시험", UITheme.FS_SM, UITheme.GREY))
+	vb.add_child(UITheme.hsep())
+
+	var floor   = GameData.tower_floor
+	var record  = GameData.tower_record
+	var att     = GameData.tower_attempts_today
+	var row1    := UITheme.hbox(20)
+	row1.add_child(UITheme.lbl("🏆 최고 기록: %d층" % record, UITheme.FS_LG, UITheme.GOLD))
+	row1.add_child(UITheme.lbl("📍 현재: %d층 도전" % floor,  UITheme.FS_LG, UITheme.CYAN))
+	vb.add_child(row1)
+	vb.add_child(UITheme.lbl("도전 횟수: %d / %d" % [att, GameData.TOWER_DAILY_MAX],
+		UITheme.FS_MD, UITheme.GREEN if att < GameData.TOWER_DAILY_MAX else UITheme.RED))
+	vb.add_child(UITheme.hsep())
+
+	var req      = 500 + floor * 180
+	var my_power = GameData.squad_power()
+	var pct      = clampf(float(my_power) / float(req), 0.0, 1.0)
+	vb.add_child(UITheme.lbl("필요 전투력: %d" % req, UITheme.FS_MD, UITheme.WHITE))
+	vb.add_child(UITheme.lbl("내 전투력:   %d" % my_power, UITheme.FS_MD,
+		UITheme.GREEN if my_power >= req else UITheme.ORANGE))
+	var bar_root := Control.new(); bar_root.custom_minimum_size = Vector2(UITheme.W - 32, 22)
+	bar_root.add_child(UITheme.crect(UITheme.BG_CARD, Vector2(UITheme.W - 32, 22)))
+	bar_root.add_child(UITheme.crect(UITheme.GREEN if pct >= 1.0 else UITheme.ORANGE,
+		Vector2((UITheme.W - 32) * pct, 22)))
+	vb.add_child(bar_root)
+	vb.add_child(UITheme.hsep())
+
+	var can = GameData.can_challenge_tower()
+	var ch_btn := UITheme.btn("⚔ 도전하기  (%d층)" % floor, UITheme.FS_LG,
+		UITheme.GOLD if can else UITheme.GREY_DIM)
+	ch_btn.custom_minimum_size = Vector2(UITheme.W - 32, 72)
+	ch_btn.disabled = not can
+	ch_btn.pressed.connect(func(): _do_tower_challenge())
+	vb.add_child(ch_btn)
+	vb.add_child(UITheme.hsep())
+
+	vb.add_child(UITheme.lbl("■ 층 달성 보상", UITheme.FS_MD, UITheme.CYAN))
+	const FLOOR_RW := [[10,"💎 20 + 🪙 1,200"],[20,"💎 50 + 소환권 ×1"],
+	                   [30,"💎 100 + 소환권 ×2"],[50,"💎 200 + 전설 소환권 ×1"],
+	                   [100,"💎 500 + 전설 소환권 ×3"]]
+	for fr in FLOOR_RW:
+		var col  = UITheme.GOLD if record >= fr[0] else UITheme.GREY
+		var mark = "✓ " if record >= fr[0] else "□ "
+		vb.add_child(UITheme.lbl("%s%d층: %s" % [mark, fr[0], fr[1]], UITheme.FS_SM, col))
+	return scroll
+
+func _do_tower_challenge():
+	var result = GameData.challenge_tower()
+	if result["success"]:
+		var gm = "  💎 +%d" % result["gems"] if result.get("gems", 0) > 0 else ""
+		_toast("🎉 %d층 클리어! 🪙 +%d%s" % [result["floor"], result["gold"], gm])
+	else:
+		_toast("❌ 실패: %s" % result.get("msg", "전투력 부족"))
+	_switch_sub(4)
+
+# ═════════════════════════════════════════════════════════════
+# 서브탭 5: 월드 보스
+# ═════════════════════════════════════════════════════════════
+func _make_boss_tab() -> Control:
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var vb := UITheme.vbox(14)
+	vb.custom_minimum_size = Vector2(UITheme.W - 16, 0)
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 8)
+	pad.add_theme_constant_override("margin_right", 8)
+	pad.add_theme_constant_override("margin_top", 8)
+	pad.add_child(vb); scroll.add_child(pad)
+
+	vb.add_child(UITheme.lbl("👹 월드 보스", UITheme.FS_XL, UITheme.RED))
+	vb.add_child(UITheme.lbl("서버 전체가 함께 쓰러뜨리는 대형 적", UITheme.FS_SM, UITheme.GREY))
+	vb.add_child(UITheme.hsep())
+
+	var stage = GameData.world_boss_stage
+	vb.add_child(UITheme.lbl("치즈파 대두목  [단계 %d]" % stage, UITheme.FS_LG, UITheme.ORANGE))
+
+	var hp_pct = GameData.get_boss_hp_pct()
+	var hp_col = UITheme.HP_GREEN if hp_pct > 0.5 else (UITheme.HP_YELLOW if hp_pct > 0.2 else UITheme.HP_RED)
+	var hp_root := Control.new(); hp_root.custom_minimum_size = Vector2(UITheme.W - 32, 30)
+	var hp_bg   := UITheme.crect(UITheme.BG_CARD, Vector2(UITheme.W - 32, 30))
+	var hp_fill := UITheme.crect(hp_col, Vector2((UITheme.W - 32) * hp_pct, 30))
+	var hp_txt  := UITheme.lbl("%d / %d  (%.1f%%)" % [
+		GameData.world_boss_current_hp, GameData.world_boss_max_hp, hp_pct * 100],
+		UITheme.FS_SM, UITheme.WHITE)
+	hp_txt.position = Vector2(8, 6)
+	hp_root.add_child(hp_bg); hp_root.add_child(hp_fill); hp_root.add_child(hp_txt)
+	vb.add_child(hp_root)
+	vb.add_child(UITheme.hsep())
+
+	var attacks = GameData.world_boss_attacks_today
+	var can     = GameData.can_attack_boss()
+	vb.add_child(UITheme.lbl("오늘 내 피해: %s" % _fmt_big(GameData.world_boss_my_damage),
+		UITheme.FS_MD, UITheme.CYAN))
+	vb.add_child(UITheme.lbl("도전 횟수: %d / %d" % [attacks, GameData.WORLD_BOSS_DAILY_MAX],
+		UITheme.FS_MD, UITheme.GREEN if can else UITheme.RED))
+
+	var atk_btn := UITheme.btn("⚔ 보스 공격하기", UITheme.FS_LG,
+		UITheme.RED if can else UITheme.GREY_DIM)
+	atk_btn.custom_minimum_size = Vector2(UITheme.W - 32, 72)
+	atk_btn.disabled = not can
+	atk_btn.pressed.connect(func(): _do_boss_attack())
+	vb.add_child(atk_btn)
+	vb.add_child(UITheme.hsep())
+
+	vb.add_child(UITheme.lbl("■ 주간 랭킹 보상 (매주 월요일 지급)", UITheme.FS_MD, UITheme.GOLD))
+	const RANK_RW := [["1위","💎 500 + 전설권 ×2"],["2~3위","💎 300 + 전설권 ×1"],
+	                  ["4~10위","💎 150 + 소환권 ×3"],["11~50위","💎 80 + 소환권 ×1"],
+	                  ["51~100위","💎 40"],["참가자","💎 20"]]
+	for rr in RANK_RW:
+		var row := UITheme.hbox(20)
+		row.add_child(UITheme.lbl(rr[0], UITheme.FS_SM, UITheme.GOLD))
+		row.add_child(UITheme.lbl(rr[1], UITheme.FS_SM, UITheme.WHITE))
+		vb.add_child(row)
+	return scroll
+
+func _do_boss_attack():
+	var result = GameData.attack_world_boss()
+	if result["success"]:
+		var clr = " 🎉 보스 처치!" if result.get("cleared", false) else ""
+		_toast("⚔ 피해: %s  💎 +%d  🪙 +%d%s" % [
+			_fmt_big(result["damage"]), result["gems"], result["gold"], clr])
+	else:
+		_toast("❌ %s" % result.get("msg", ""))
+	_switch_sub(5)
+
+func _fmt_big(n: int) -> String:
+	if n >= 1_000_000: return "%.1fM" % (n / 1_000_000.0)
+	if n >= 1_000:     return "%.1fK" % (n / 1_000.0)
+	return str(n)
 
 # ─────────────────────────────────────────────────────────────
 # 헬퍼

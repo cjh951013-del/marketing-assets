@@ -43,7 +43,7 @@ func _make_hud() -> Control:
 func _make_sub_tab_bar() -> Control:
 	var bg := UITheme.crect(UITheme.BG_PANEL, Vector2(UITheme.W, 52))
 	var hb  := UITheme.hbox(0); hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); bg.add_child(hb)
-	for txt in ["💰 골드","🎲 소환","🔄 교환","📋 임무","🎯 패스"]:
+	for txt in ["💰 골드","🎲 소환","🔄 교환","📋 임무","🎯 패스","🏆 업적"]:
 		var b := Button.new(); b.text = txt
 		b.add_theme_font_size_override("font_size", UITheme.FS_XS)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -64,6 +64,7 @@ func _switch_sub(idx: int):
 		2: _content.add_child(_make_exchange_tab())
 		3: _content.add_child(_make_quest_tab())
 		4: _content.add_child(_make_bp_tab())
+		5: _content.add_child(_make_achievement_tab())
 
 func refresh():
 	_switch_sub(_sub)
@@ -279,6 +280,65 @@ func _make_bp_reward_row(rw: Dictionary) -> Control:
 	elif not GameData.bp_premium:
 		_lbl_at_c(card, "🔒", UITheme.FS_MD, UITheme.GREY_DIM, Vector2(UITheme.W - 220, 40))
 
+	return card
+
+# ═════════════════════════════════════════════════════════════
+# 서브탭 5: 업적
+# ═════════════════════════════════════════════════════════════
+func _make_achievement_tab() -> Control:
+	var scroll := _make_scroll_base()
+	var vb     := _get_scroll_vb(scroll)
+
+	var achs = GameData.get_achievements()
+	var done_count     = achs.filter(func(a): return a["done"]).size()
+	var claimable_count = achs.filter(func(a): return a["claimable"]).size()
+
+	vb.add_child(UITheme.lbl("🏆 업적", UITheme.FS_XL, UITheme.GOLD))
+	vb.add_child(UITheme.lbl("달성: %d / %d" % [done_count, achs.size()], UITheme.FS_MD, UITheme.CYAN))
+	if claimable_count > 0:
+		vb.add_child(UITheme.lbl("⚡ 수령 가능: %d개" % claimable_count, UITheme.FS_SM, UITheme.GREEN))
+	vb.add_child(UITheme.hsep())
+
+	for ach_data in achs:
+		vb.add_child(_make_achievement_card(ach_data))
+	return scroll
+
+func _make_achievement_card(ach_data: Dictionary) -> Control:
+	var done      = ach_data["done"]
+	var claimable = ach_data["claimable"]
+	var progress  = ach_data["progress"]
+	var goal      = ach_data["goal"]
+	var card      := UITheme.crect(UITheme.BG_CARD if not done else UITheme.BG_INNER, Vector2(UITheme.W - 32, 88))
+	var bdr_col   = UITheme.GOLD if done else (UITheme.GREEN if claimable else UITheme.GREY_DIM)
+	card.add_child(UITheme.crect(bdr_col, Vector2(4, 88)))
+
+	_lbl_at_c(card, ach_data["name"], UITheme.FS_MD,
+		UITheme.GOLD if done else (UITheme.WHITE if claimable else UITheme.GREY), Vector2(14, 8))
+	_lbl_at_c(card, ach_data["desc"], UITheme.FS_SM, UITheme.GREY, Vector2(14, 34))
+
+	var pct = clampf(float(progress) / float(goal), 0.0, 1.0)
+	var pb_bg   := UITheme.crect(UITheme.BG_INNER, Vector2(260, 8)); pb_bg.position = Vector2(14, 58)
+	var pb_fill := UITheme.crect(UITheme.GREEN if done else UITheme.CYAN, Vector2(260 * pct, 8))
+	pb_fill.position = Vector2(14, 58)
+	card.add_child(pb_bg); card.add_child(pb_fill)
+	_lbl_at_c(card, "%d / %d" % [mini(progress, goal), goal], UITheme.FS_XS, UITheme.GREY, Vector2(14, 70))
+
+	var rw = ach_data["reward"]
+	var rw_parts = []
+	if rw.get("gold",          0) > 0: rw_parts.append("🪙%d" % rw["gold"])
+	if rw.get("gems",          0) > 0: rw_parts.append("💎%d" % rw["gems"])
+	if rw.get("legend_ticket", 0) > 0: rw_parts.append("전설권×%d" % rw["legend_ticket"])
+	_lbl_at_c(card, "보상: %s" % " ".join(rw_parts), UITheme.FS_XS,
+		UITheme.GOLD if done else UITheme.GREY, Vector2(290, 8))
+
+	if done:
+		_lbl_at_c(card, "✓ 완료", UITheme.FS_MD, UITheme.GREEN, Vector2(UITheme.W - 100, 30))
+	elif claimable:
+		var cb := UITheme.btn("수령", UITheme.FS_MD, UITheme.GOLD)
+		cb.position = Vector2(UITheme.W - 110, 18); cb.custom_minimum_size = Vector2(86, 52)
+		var aid := ach_data["id"]
+		cb.pressed.connect(func(): GameData.claim_achievement(aid); _switch_sub(5))
+		card.add_child(cb)
 	return card
 
 func _fmt_reward(rw: Dictionary) -> String:
