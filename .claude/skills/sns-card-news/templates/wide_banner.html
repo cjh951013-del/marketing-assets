@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+  /* ===== 디자인 토큰 (SKILL.md §2 — 변경 금지) =====
+     사용법: <body class="variant-a"> = 썸네일(통계 칩) / <body class="variant-b"> = 커버(하이라이트 카드+CTA) */
+  :root {
+    --accent:#ffd94a;
+    --text-sub: rgba(255,255,255,.75); --text-dim: rgba(255,255,255,.55);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    width:1200px; height:630px; overflow:hidden; position:relative; display:flex;
+    font-family: Pretendard, "Noto Sans CJK KR", "Noto Sans KR", sans-serif; color:#fff;
+    /* 보라→마젠타→오렌지 대각 그라데이션 + 광원 */
+    background:
+      radial-gradient(700px 500px at 85% 30%, rgba(255,140,60,.45), transparent 70%),
+      radial-gradient(600px 600px at 95% 90%, rgba(255,90,150,.30), transparent 70%),
+      linear-gradient(115deg, #2a1550 0%, #4a1f68 40%, #7a2f7a 70%, #b34a3e 100%);
+  }
+  .left { width:56%; padding:70px 40px 60px 72px; display:flex; flex-direction:column; justify-content:center; }
+  .right { width:44%; padding:60px 60px 60px 0; display:flex; flex-direction:column; justify-content:center; gap:18px; }
+
+  .pills { display:flex; gap:14px; margin-bottom:34px; }
+  .pill { border-radius:999px; padding:10px 22px; font-size:21px; font-weight:800; }
+  .pill.solid { background:linear-gradient(90deg,#ff4fa0,#c86bff); color:#fff; }
+  .pill.line  { border:1.5px solid rgba(255,255,255,.5); color:#fff; background:rgba(0,0,0,.25); }
+
+  .eyebrow { font-size:20px; letter-spacing:.35em; color:var(--accent); font-weight:700; margin-bottom:24px; }
+  h1 { font-size:72px; font-weight:800; line-height:1.22; margin-bottom:28px; }
+  h1 .hl { color:var(--accent); }
+  .sub { font-size:26px; line-height:1.55; color:var(--text-sub); }
+
+  /* ── variant A: 통계 칩 4개 ── */
+  .stats { display:flex; gap:16px; margin-top:44px; }
+  .stat {
+    background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.15);
+    border-radius:14px; padding:18px 24px; text-align:center; min-width:110px;
+  }
+  .stat b { display:block; font-size:34px; color:var(--accent); font-weight:800; }
+  .stat span { font-size:17px; color:var(--text-sub); white-space:nowrap; }
+  body.variant-a .right, body.variant-a .eyebrow { display:none; }
+
+  /* ── variant B: 하이라이트 카드 + CTA ── */
+  .hcard {
+    display:flex; gap:18px; align-items:center;
+    background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.14);
+    border-radius:16px; padding:20px 24px;
+  }
+  .hcard .tile {
+    width:56px; height:56px; border-radius:12px; background:rgba(255,255,255,.16);
+    display:flex; align-items:center; justify-content:center; font-size:30px; flex:none;
+  }
+  .hcard b { display:block; font-size:24px; font-weight:800; }
+  .hcard span { font-size:19px; color:var(--text-dim); }
+  .ctabtn {
+    background:linear-gradient(90deg,#ffd94a,#ffb84a); color:#1a1030; border-radius:14px;
+    padding:20px 24px; text-align:center; font-size:24px; font-weight:800; line-height:1.4;
+  }
+  body.variant-b .pills, body.variant-b .stats { display:none; }
+</style>
+</head>
+<body class="variant-a"><!-- variant-a=썸네일 / variant-b=커버 -->
+
+  <div class="left">
+    <div class="pills">
+      <div class="pill solid">2026 여름 특집</div>
+      <div class="pill line">커플 · 여성 추천</div>
+    </div>
+    <div class="eyebrow">2026 SUMMER TOKYO GUIDE</div>
+    <h1>도쿄 2박3일<br><span class="hl">완벽 코스</span></h1>
+    <div class="sub">타베로그 인증 맛집 8곳 + 유카타 체험<br>시부야 스카이 · 츠키지 스시 동선 완전 공개</div>
+    <div class="stats">
+      <div class="stat"><b>3일</b><span>완전 일정</span></div>
+      <div class="stat"><b>8곳</b><span>맛집 검증</span></div>
+      <div class="stat"><b>3.5+</b><span>타베로그</span></div>
+      <div class="stat"><b>229m</b><span>시부야스카이</span></div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="hcard"><div class="tile">🍣</div><div><b>새벽 츠키지 스시</b><span>우니 + 오토로 오마카세</span></div></div>
+    <div class="hcard"><div class="tile">🌆</div><div><b>시부야 스카이 229m</b><span>노을 + 야경 동시 감상</span></div></div>
+    <div class="hcard"><div class="tile">🌸</div><div><b>유카타 체험 + 불꽃놀이</b><span>7월 25일 스미다가와</span></div></div>
+    <div class="ctabtn">전체 일정 + 맛집 링크<br>블로그에서 확인하기</div>
+  </div>
+
+</body>
+</html>
